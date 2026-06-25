@@ -6,7 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 private val WarbossColors = darkColorScheme(
-    primary = Color(0xFFCF1924),        // Warhammer red
+    primary = Color(0xFFCF1924),        // Crimson
     onPrimary = Color.White,
     secondary = Color(0xFFFFD700),      // Gold
     onSecondary = Color(0xFF1A1A1A),
