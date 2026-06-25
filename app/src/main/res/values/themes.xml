@@ -1,0 +1,3 @@
+<resources>
+    <style name="Theme.WH40kBuilder" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
