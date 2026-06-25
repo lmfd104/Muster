@@ -1,7 +1,9 @@
 package com.lmfd.warboss.ui.armylist
 
+import android.app.Activity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lmfd.warboss.data.billing.BillingManager
 import com.lmfd.warboss.domain.usecase.CreateArmyListUseCase
 import com.lmfd.warboss.domain.usecase.GetArmyListsUseCase
 import com.lmfd.warboss.domain.usecase.GetFactionsUseCase
@@ -18,6 +20,7 @@ class ArmyListsViewModel @Inject constructor(
     getArmyListsUseCase: GetArmyListsUseCase,
     getFactions: GetFactionsUseCase,
     private val createArmyListUseCase: CreateArmyListUseCase,
+    private val billingManager: BillingManager,
 ) : ViewModel() {
 
     val uiState: StateFlow<ArmyListsUiState> = getArmyListsUseCase()
@@ -27,9 +30,16 @@ class ArmyListsViewModel @Inject constructor(
     val factions = getFactions()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val isPro: StateFlow<Boolean> = billingManager.isPro
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     fun createList(name: String, factionId: String, factionName: String, pointsLimit: Int) {
         viewModelScope.launch {
             createArmyListUseCase(name, factionId, factionName, pointsLimit)
         }
+    }
+
+    fun launchBillingFlow(activity: Activity) {
+        billingManager.launchBillingFlow(activity)
     }
 }

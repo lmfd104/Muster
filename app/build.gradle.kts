@@ -100,6 +100,9 @@ dependencies {
     // Network
     implementation(libs.okhttp)
 
+    // Billing
+    implementation(libs.billing.ktx)
+
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 

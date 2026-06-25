@@ -1,5 +1,6 @@
 package com.lmfd.warboss.ui.armylist
 
+import android.app.Activity
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,8 +16,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,6 +42,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -56,12 +60,27 @@ fun ArmyListsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val factions by viewModel.factions.collectAsState()
+    val isPro by viewModel.isPro.collectAsState()
+    val context = LocalContext.current
+
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
+    var showUpgradeDialog by rememberSaveable { mutableStateOf(false) }
+
+    val listCount = when (val s = uiState) {
+        is ArmyListsUiState.Success -> s.lists.size
+        else -> 0
+    }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("My Army Lists") }) },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showCreateDialog = true }) {
+            FloatingActionButton(onClick = {
+                if (!isPro && listCount >= 1) {
+                    showUpgradeDialog = true
+                } else {
+                    showCreateDialog = true
+                }
+            }) {
                 Icon(Icons.Default.Add, contentDescription = "New army list")
             }
         },
@@ -97,6 +116,53 @@ fun ArmyListsScreen(
             },
         )
     }
+
+    if (showUpgradeDialog) {
+        UpgradeDialog(
+            onDismiss = { showUpgradeDialog = false },
+            onUnlock = {
+                showUpgradeDialog = false
+                viewModel.launchBillingFlow(context as Activity)
+            },
+        )
+    }
+}
+
+@Composable
+private fun UpgradeDialog(onDismiss: () -> Unit, onUnlock: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Star, contentDescription = null, tint = MaterialTheme.colorScheme.secondary) },
+        title = { Text("Unlock Muster Pro") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "You've used your free army list.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                ) {
+                    Column(
+                        Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text("Muster Pro — one-time purchase", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                        Text("• Unlimited army lists", style = MaterialTheme.typography.bodySmall)
+                        Text("• All future features included", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onUnlock) { Text("Unlock Now") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Not now") }
+        },
+    )
 }
 
 @Composable
@@ -253,4 +319,10 @@ private fun ArmyListRowPreview() {
             onClick = {},
         )
     }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF0D0D0D)
+@Composable
+private fun UpgradeDialogPreview() {
+    WarbossTheme { UpgradeDialog(onDismiss = {}, onUnlock = {}) }
 }
