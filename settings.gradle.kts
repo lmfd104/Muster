@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "WH40kBuilder"
+rootProject.name = "Muster"
 include(":app")
