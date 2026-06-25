@@ -1,5 +1,6 @@
 package com.lmfd.warboss.ui.unit
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,26 +16,42 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.lmfd.warboss.domain.model.ArmyList
 import com.lmfd.warboss.domain.model.CategoryLink
 import com.lmfd.warboss.domain.model.UnitDetail
 import com.lmfd.warboss.domain.model.UnitProfile
@@ -48,12 +65,50 @@ fun UnitDetailScreen(
     viewModel: UnitDetailViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    UnitDetailContent(uiState, onBack)
+    val showAddSheet by viewModel.showAddSheet.collectAsState()
+    val armyListsForFaction by viewModel.armyListsForFaction.collectAsState()
+    val addResult by viewModel.addResult.collectAsState()
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(addResult) {
+        when (val result = addResult) {
+            is AddToListResult.Success -> {
+                snackbarHostState.showSnackbar("Added to ${result.listName}")
+                viewModel.clearAddResult()
+            }
+            is AddToListResult.Error -> {
+                snackbarHostState.showSnackbar(result.message)
+                viewModel.clearAddResult()
+            }
+            null -> Unit
+        }
+    }
+
+    UnitDetailContent(
+        uiState = uiState,
+        onBack = onBack,
+        snackbarHostState = snackbarHostState,
+        onOpenAddSheet = viewModel::openAddSheet,
+    )
+
+    if (showAddSheet) {
+        AddToListSheet(
+            armyLists = armyListsForFaction,
+            onDismiss = viewModel::closeAddSheet,
+            onPickList = { list -> viewModel.addToList(list.id, list.name) },
+            onCreateAndAdd = { name, pts -> viewModel.createAndAdd(name, pts) },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun UnitDetailContent(uiState: UnitDetailUiState, onBack: () -> Unit) {
+private fun UnitDetailContent(
+    uiState: UnitDetailUiState,
+    onBack: () -> Unit,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
+    onOpenAddSheet: () -> Unit = {},
+) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -71,7 +126,15 @@ private fun UnitDetailContent(uiState: UnitDetailUiState, onBack: () -> Unit) {
                     }
                 }
             )
-        }
+        },
+        floatingActionButton = {
+            if (uiState is UnitDetailUiState.Success) {
+                FloatingActionButton(onClick = onOpenAddSheet) {
+                    Icon(Icons.Default.Add, contentDescription = "Add to army list")
+                }
+            }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         when (uiState) {
             UnitDetailUiState.Loading -> Box(
@@ -99,7 +162,6 @@ private fun UnitDetailBody(detail: UnitDetail, padding: androidx.compose.foundat
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        // Summary card
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 DetailRow("Points", "${detail.summary.points}")
@@ -113,27 +175,21 @@ private fun UnitDetailBody(detail: UnitDetail, padding: androidx.compose.foundat
             }
         }
 
-        // Profiles
         if (detail.profiles.isNotEmpty()) {
             SectionHeader("Stat Blocks")
-            detail.profiles.forEach { profile ->
-                ProfileCard(profile)
-            }
+            detail.profiles.forEach { profile -> ProfileCard(profile) }
         }
 
-        // Keywords
         if (detail.keywords.isNotEmpty()) {
             SectionHeader("Keywords")
             KeywordChips(detail.keywords)
         }
 
-        // Faction keywords
         if (detail.factionKeywords.isNotEmpty()) {
             SectionHeader("Faction Keywords")
             KeywordChips(detail.factionKeywords)
         }
 
-        // Category links
         if (detail.categoryLinks.isNotEmpty()) {
             SectionHeader("Categories")
             detail.categoryLinks.forEach { link ->
@@ -153,8 +209,101 @@ private fun UnitDetailBody(detail: UnitDetail, padding: androidx.compose.foundat
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(80.dp)) // FAB clearance
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddToListSheet(
+    armyLists: List<ArmyList>,
+    onDismiss: () -> Unit,
+    onPickList: (ArmyList) -> Unit,
+    onCreateAndAdd: (name: String, pts: Int) -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var showCreateDialog by rememberSaveable { mutableStateOf(false) }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(Modifier.padding(bottom = 32.dp)) {
+            Text(
+                "Add to Army List",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            HorizontalDivider()
+
+            if (armyLists.isEmpty()) {
+                Text(
+                    "No lists for this faction yet.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp),
+                )
+            } else {
+                armyLists.forEach { list ->
+                    ListItem(
+                        headlineContent = { Text(list.name) },
+                        supportingContent = { Text("${list.pointsTotal} / ${list.pointsLimit} pts · ${list.unitCount} units") },
+                        modifier = Modifier.clickable { onPickList(list) },
+                    )
+                }
+                HorizontalDivider()
+            }
+
+            TextButton(
+                onClick = { showCreateDialog = true },
+                modifier = Modifier.padding(horizontal = 8.dp),
+            ) { Text("+ Create new list for this faction") }
+        }
+    }
+
+    if (showCreateDialog) {
+        CreateListDialog(
+            onDismiss = { showCreateDialog = false },
+            onCreate = { name, pts ->
+                showCreateDialog = false
+                onCreateAndAdd(name, pts)
+            },
+        )
+    }
+}
+
+@Composable
+private fun CreateListDialog(
+    onDismiss: () -> Unit,
+    onCreate: (name: String, pts: Int) -> Unit,
+) {
+    var name by rememberSaveable { mutableStateOf("") }
+    var ptsText by rememberSaveable { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("New Army List") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("List name") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = ptsText,
+                    onValueChange = { ptsText = it.filter { c -> c.isDigit() } },
+                    label = { Text("Points limit (optional)") },
+                    singleLine = true,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (name.isNotBlank()) onCreate(name.trim(), ptsText.toIntOrNull() ?: 0) },
+                enabled = name.isNotBlank(),
+            ) { Text("Create & Add") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable
@@ -180,10 +329,7 @@ private fun SectionHeader(title: String) {
 private fun ProfileCard(profile: UnitProfile) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                "${profile.name} (${profile.typeName})",
-                style = MaterialTheme.typography.titleSmall,
-            )
+            Text("${profile.name} (${profile.typeName})", style = MaterialTheme.typography.titleSmall)
             profile.characteristics.entries.forEach { (key, value) ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -212,7 +358,7 @@ private fun KeywordChips(keywords: List<String>) {
 private fun UnitDetailPreview() {
     WarbossTheme {
         UnitDetailContent(
-            UnitDetailUiState.Success(
+            uiState = UnitDetailUiState.Success(
                 UnitDetail(
                     summary = UnitSummary("u-1", "f-1", "Warboss", "unit", 85, 1, 1, false),
                     profiles = listOf(
