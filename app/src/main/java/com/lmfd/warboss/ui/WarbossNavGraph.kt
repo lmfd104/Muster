@@ -3,6 +3,7 @@ package com.lmfd.warboss.ui
 import android.net.Uri
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
@@ -26,6 +27,7 @@ import com.lmfd.warboss.ui.armylist.ArmyListDetailScreen
 import com.lmfd.warboss.ui.armylist.ArmyListsScreen
 import com.lmfd.warboss.ui.dataimport.ImportScreen
 import com.lmfd.warboss.ui.faction.FactionListScreen
+import com.lmfd.warboss.ui.game.GameTrackerScreen
 import com.lmfd.warboss.ui.unit.UnitDetailScreen
 import com.lmfd.warboss.ui.unit.UnitListScreen
 
@@ -35,6 +37,7 @@ private const val ROUTE_UNIT_LIST = "units/{factionId}"
 private const val ROUTE_UNIT_DETAIL = "unit/{unitId}"
 private const val ROUTE_ARMY_LISTS = "army_lists"
 private const val ROUTE_ARMY_LIST_DETAIL = "army_list/{listId}"
+private const val ROUTE_GAME = "game"
 
 @Composable
 fun WarbossNavGraph(
@@ -47,6 +50,7 @@ fun WarbossNavGraph(
         ROUTE_IMPORT -> 0
         ROUTE_FACTIONS, ROUTE_UNIT_LIST, ROUTE_UNIT_DETAIL -> 1
         ROUTE_ARMY_LISTS, ROUTE_ARMY_LIST_DETAIL -> 2
+        ROUTE_GAME -> 3
         else -> 1
     }
 
@@ -88,6 +92,18 @@ fun WarbossNavGraph(
                     },
                     icon = { Icon(Icons.Default.Bookmark, contentDescription = "My Lists") },
                     label = { Text("My Lists") },
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 3,
+                    onClick = {
+                        navController.navigate(ROUTE_GAME) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    icon = { Icon(Icons.Default.Casino, contentDescription = "Game") },
+                    label = { Text("Game") },
                 )
             }
         },
@@ -148,6 +164,10 @@ fun WarbossNavGraph(
                 arguments = listOf(navArgument("listId") { type = NavType.StringType }),
             ) {
                 ArmyListDetailScreen(onBack = { navController.popBackStack() })
+            }
+
+            composable(ROUTE_GAME) {
+                GameTrackerScreen()
             }
         }
     }
