@@ -15,12 +15,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -63,13 +67,16 @@ fun FactionListScreen(
     viewModel: FactionListViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    FactionListContent(uiState, onFactionClick, onNavigateToImport)
+    val searchQuery by viewModel.searchQuery.collectAsState()
+    FactionListContent(uiState, searchQuery, viewModel::onSearchQueryChange, onFactionClick, onNavigateToImport)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FactionListContent(
     uiState: FactionListUiState,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
     onFactionClick: (String) -> Unit,
     onNavigateToImport: () -> Unit,
 ) {
@@ -94,6 +101,28 @@ private fun FactionListContent(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             TacticalBackground()
+            Column(Modifier.fillMaxSize()) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    placeholder = { Text("Search armies…") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { onSearchQueryChange("") }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear search")
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                )
             when (uiState) {
                 FactionListUiState.Loading -> Box(
                     Modifier.fillMaxSize(),
@@ -101,41 +130,52 @@ private fun FactionListContent(
                 ) { CircularProgressIndicator(color = MaterialTheme.colorScheme.primary) }
 
                 is FactionListUiState.Success -> {
-                    if (uiState.factions.isEmpty()) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    when {
+                        uiState.factions.isEmpty() && searchQuery.isNotEmpty() -> {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text(
-                                    "No armies found.",
+                                    "No armies match \"$searchQuery\"",
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                TextButton(onClick = onNavigateToImport) { Text("Go to Import") }
                             }
                         }
-                    } else {
-                        val grouped = uiState.factions.groupBy { allianceName(it.name) }
-                        LazyColumn(Modifier.fillMaxSize()) {
-                            grouped.forEach { (alliance, factions) ->
-                                item(key = "header_$alliance") {
-                                    AllianceHeader(alliance)
-                                }
-                                items(factions, key = { it.id }) { faction ->
-                                    FactionRow(
-                                        faction = faction,
-                                        accentColor = allianceColor(alliance),
-                                        onClick = { onFactionClick(faction.id) },
+                        uiState.factions.isEmpty() -> {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        "No armies found.",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
-                                    HorizontalDivider(
-                                        color = MaterialTheme.colorScheme.surfaceVariant,
-                                        thickness = 0.5.dp,
-                                    )
+                                    TextButton(onClick = onNavigateToImport) { Text("Go to Import") }
                                 }
-                                item(key = "spacer_$alliance") { Spacer(Modifier.height(8.dp)) }
+                            }
+                        }
+                        else -> {
+                            val grouped = uiState.factions.groupBy { allianceName(it.name) }
+                            LazyColumn(Modifier.fillMaxSize()) {
+                                grouped.forEach { (alliance, factions) ->
+                                    item(key = "header_$alliance") { AllianceHeader(alliance) }
+                                    items(factions, key = { it.id }) { faction ->
+                                        FactionRow(
+                                            faction = faction,
+                                            accentColor = allianceColor(alliance),
+                                            onClick = { onFactionClick(faction.id) },
+                                        )
+                                        HorizontalDivider(
+                                            color = MaterialTheme.colorScheme.surfaceVariant,
+                                            thickness = 0.5.dp,
+                                        )
+                                    }
+                                    item(key = "spacer_$alliance") { Spacer(Modifier.height(8.dp)) }
+                                }
                             }
                         }
                     }
                 }
             }
+            } // close Column
         }
     }
 }
@@ -218,12 +258,14 @@ private fun FactionRow(faction: Faction, accentColor: Color, onClick: () -> Unit
 private fun FactionListSuccessPreview() {
     WarbossTheme {
         FactionListContent(
-            FactionListUiState.Success(listOf(
+            uiState = FactionListUiState.Success(listOf(
                 Faction("f-1", "Chaos - Death Guard", 114),
                 Faction("f-2", "Chaos - World Eaters", 95),
                 Faction("f-3", "Imperium - Space Marines", 480),
                 Faction("f-4", "Xenos - Tyranids", 201),
             )),
+            searchQuery = "",
+            onSearchQueryChange = {},
             onFactionClick = {},
             onNavigateToImport = {},
         )
