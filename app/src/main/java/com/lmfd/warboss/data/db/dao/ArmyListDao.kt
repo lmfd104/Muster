@@ -21,7 +21,7 @@ interface ArmyListDao {
 
     @Query("""
         SELECT al.id, al.name, al.factionId, al.factionName, al.pointsLimit, al.createdAt,
-               COALESCE(SUM(u.points * alu.quantity), 0) AS pointsTotal,
+               COALESCE(SUM(COALESCE(u.points, alu.importedPoints, 0) * alu.quantity), 0) AS pointsTotal,
                COUNT(alu.id) AS unitCount
         FROM army_list al
         LEFT JOIN army_list_unit alu ON alu.armyListId = al.id
@@ -33,7 +33,7 @@ interface ArmyListDao {
 
     @Query("""
         SELECT al.id, al.name, al.factionId, al.factionName, al.pointsLimit, al.createdAt,
-               COALESCE(SUM(u.points * alu.quantity), 0) AS pointsTotal,
+               COALESCE(SUM(COALESCE(u.points, alu.importedPoints, 0) * alu.quantity), 0) AS pointsTotal,
                COUNT(alu.id) AS unitCount
         FROM army_list al
         LEFT JOIN army_list_unit alu ON alu.armyListId = al.id
@@ -56,11 +56,12 @@ interface ArmyListDao {
 
     @Query("""
         SELECT alu.id, alu.armyListId, alu.unitId, alu.quantity,
-               u.name AS unitName, u.points AS unitPoints
+               COALESCE(u.name, alu.importedName, '') AS unitName,
+               COALESCE(u.points, alu.importedPoints, 0) AS unitPoints
         FROM army_list_unit alu
-        JOIN unit u ON u.id = alu.unitId
+        LEFT JOIN unit u ON u.id = alu.unitId
         WHERE alu.armyListId = :listId
-        ORDER BY u.name ASC
+        ORDER BY COALESCE(u.name, alu.importedName, '') ASC
     """)
     fun getEntriesForList(listId: String): Flow<List<ArmyListEntryRow>>
 }

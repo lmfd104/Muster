@@ -23,7 +23,7 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): WarbossDatabase =
         Room.databaseBuilder(context, WarbossDatabase::class.java, "warboss.db")
-            .addMigrations(WarbossDatabase.MIGRATION_1_2)
+            .addMigrations(WarbossDatabase.MIGRATION_1_2, WarbossDatabase.MIGRATION_2_3)
             .build()
 
     @Provides

@@ -22,4 +22,6 @@ data class ArmyListUnitEntity(
     val armyListId: String,
     val unitId: String,
     val quantity: Int = 1,
+    val importedName: String? = null,
+    val importedPoints: Int? = null,
 )

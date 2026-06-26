@@ -10,6 +10,7 @@ interface ArmyListRepository {
     fun getArmyListEntries(listId: String): Flow<List<ArmyListEntry>>
     suspend fun createArmyList(name: String, factionId: String, factionName: String, pointsLimit: Int): String
     suspend fun addUnitToList(listId: String, unitId: String): String
+    suspend fun importUnitToList(listId: String, unitId: String, importedName: String, importedPoints: Int, quantity: Int)
     suspend fun removeEntry(entryId: String)
     suspend fun updateEntryQuantity(entryId: String, quantity: Int)
     suspend fun deleteArmyList(listId: String)

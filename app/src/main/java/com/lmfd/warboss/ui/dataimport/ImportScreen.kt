@@ -1,5 +1,8 @@
 package com.lmfd.warboss.ui.dataimport
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,9 +11,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -22,6 +28,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -35,11 +42,23 @@ fun ImportScreen(
     viewModel: ImportViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val rosterState by viewModel.rosterState.collectAsState()
+
+    val rosterPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) viewModel.importRosterFile(uri)
+    }
+
     ImportContent(
         uiState = uiState,
+        rosterState = rosterState,
         onStart = viewModel::startImport,
         onCancel = viewModel::cancelImport,
         onBrowse = onImportComplete,
+        onPickRoster = { rosterPicker.launch(arrayOf("*/*")) },
+        onDismissRoster = viewModel::dismissRosterResult,
+        onViewImportedList = { onImportComplete() },
     )
 }
 
@@ -47,27 +66,109 @@ fun ImportScreen(
 @Composable
 internal fun ImportContent(
     uiState: ImportUiState,
+    rosterState: RosterImportState = RosterImportState.Idle,
     onStart: () -> Unit,
     onCancel: () -> Unit,
     onBrowse: () -> Unit,
+    onPickRoster: () -> Unit = {},
+    onDismissRoster: () -> Unit = {},
+    onViewImportedList: () -> Unit = {},
 ) {
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Army Data Import") }) }
+        topBar = { TopAppBar(title = { Text("Import") }) }
     ) { padding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 24.dp),
-            contentAlignment = Alignment.Center,
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            when (uiState) {
-                ImportUiState.Idle -> IdleContent(onStart)
-                is ImportUiState.Interrupted -> InterruptedContent(onStart)
-                is ImportUiState.Downloading -> DownloadingContent(uiState.progress, onCancel)
-                is ImportUiState.Parsing -> ParsingContent(uiState.factionName, uiState.progress, onCancel)
-                is ImportUiState.Complete -> CompleteContent(uiState.factionCount, onBrowse, onStart)
-                is ImportUiState.Error -> ErrorContent(uiState.message, onStart)
+            // BSData catalog section
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    "Army Data Catalog",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "Download all WH40k 10e unit stats, abilities, and keywords from BSData.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                when (uiState) {
+                    ImportUiState.Idle -> IdleContent(onStart)
+                    is ImportUiState.Interrupted -> InterruptedContent(onStart)
+                    is ImportUiState.Downloading -> DownloadingContent(uiState.progress, onCancel)
+                    is ImportUiState.Parsing -> ParsingContent(uiState.factionName, uiState.progress, onCancel)
+                    is ImportUiState.Complete -> CompleteContent(uiState.factionCount, onBrowse, onStart)
+                    is ImportUiState.Error -> ErrorContent(uiState.message, onStart)
+                }
+            }
+
+            HorizontalDivider()
+
+            // Roster import section
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    "Import Roster",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "Import an existing army list from a BattleScribe or New Recruit .ros or .rosz file.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                when (rosterState) {
+                    RosterImportState.Idle -> {
+                        OutlinedButton(onClick = onPickRoster, modifier = Modifier.fillMaxWidth()) {
+                            Text("Open .ros / .rosz file")
+                        }
+                    }
+                    RosterImportState.Loading -> {
+                        CircularProgressIndicator()
+                        Text("Importing roster…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    is RosterImportState.Success -> {
+                        Text(
+                            "Imported \"${rosterState.listName}\" — ${rosterState.unitCount} units",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            textAlign = TextAlign.Center,
+                        )
+                        Button(onClick = onViewImportedList, modifier = Modifier.fillMaxWidth()) {
+                            Text("Go to My Lists")
+                        }
+                        OutlinedButton(onClick = onDismissRoster, modifier = Modifier.fillMaxWidth()) {
+                            Text("Import Another")
+                        }
+                    }
+                    is RosterImportState.Error -> {
+                        Text(
+                            rosterState.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center,
+                        )
+                        OutlinedButton(onClick = onPickRoster, modifier = Modifier.fillMaxWidth()) {
+                            Text("Try Again")
+                        }
+                    }
+                }
             }
         }
     }
@@ -178,11 +279,11 @@ private fun ErrorContent(message: String, onRetry: () -> Unit) {
 @Preview(showBackground = true, backgroundColor = 0xFF0D0D0D)
 @Composable
 private fun ImportIdlePreview() {
-    WarbossTheme { ImportContent(ImportUiState.Idle, {}, {}, {}) }
+    WarbossTheme { ImportContent(uiState = ImportUiState.Idle, onStart = {}, onCancel = {}, onBrowse = {}) }
 }
 
 @Preview(showBackground = true, backgroundColor = 0xFF0D0D0D)
 @Composable
 private fun ImportCompletePreview() {
-    WarbossTheme { ImportContent(ImportUiState.Complete(42, 3), {}, {}, {}) }
+    WarbossTheme { ImportContent(uiState = ImportUiState.Complete(42, 3), onStart = {}, onCancel = {}, onBrowse = {}) }
 }

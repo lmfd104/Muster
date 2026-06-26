@@ -52,6 +52,25 @@ class ArmyListRepositoryImpl @Inject constructor(
         return id
     }
 
+    override suspend fun importUnitToList(
+        listId: String,
+        unitId: String,
+        importedName: String,
+        importedPoints: Int,
+        quantity: Int,
+    ) {
+        dao.insertEntry(
+            ArmyListUnitEntity(
+                id = UUID.randomUUID().toString(),
+                armyListId = listId,
+                unitId = unitId,
+                quantity = quantity,
+                importedName = importedName,
+                importedPoints = importedPoints,
+            )
+        )
+    }
+
     override suspend fun removeEntry(entryId: String) = dao.removeEntry(entryId)
 
     override suspend fun updateEntryQuantity(entryId: String, quantity: Int) =

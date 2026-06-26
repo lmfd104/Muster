@@ -20,7 +20,7 @@ import com.lmfd.warboss.data.db.entity.ProfileEntity
 import com.lmfd.warboss.data.db.entity.UnitEntity
 
 @Database(
-    version = 2,
+    version = 3,
     exportSchema = true,
     entities = [
         GameSystemEntity::class,
@@ -42,6 +42,13 @@ abstract class WarbossDatabase : RoomDatabase() {
     abstract fun armyListDao(): ArmyListDao
 
     companion object {
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE army_list_unit ADD COLUMN importedName TEXT")
+                db.execSQL("ALTER TABLE army_list_unit ADD COLUMN importedPoints INTEGER")
+            }
+        }
+
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
