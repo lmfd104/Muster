@@ -18,7 +18,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,6 +28,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -53,10 +56,16 @@ import com.lmfd.warboss.ui.theme.WarbossTheme
 @Composable
 fun GameTrackerScreen(viewModel: GameTrackerViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
+    val saveState by viewModel.saveState.collectAsState()
     GameTrackerContent(
         state = state,
+        saveState = saveState,
         onSetRound = viewModel::setRound,
         onReset = viewModel::resetGame,
+        onSetMyFaction = viewModel::setMyFaction,
+        onSetOpponentFaction = viewModel::setOpponentFaction,
+        onSaveGame = { viewModel.saveGame() },
+        onDismissSave = viewModel::dismissSaveResult,
         onAdjustPlayerCpGained = viewModel::adjustPlayerCpGained,
         onAdjustPlayerCpSpent = viewModel::adjustPlayerCpSpent,
         onAdjustPlayerPrimary = viewModel::adjustPlayerPrimary,
@@ -74,8 +83,13 @@ fun GameTrackerScreen(viewModel: GameTrackerViewModel = hiltViewModel()) {
 @Composable
 private fun GameTrackerContent(
     state: GameTrackerState,
+    saveState: SaveGameState = SaveGameState.Idle,
     onSetRound: (Int) -> Unit,
     onReset: () -> Unit,
+    onSetMyFaction: (String) -> Unit = {},
+    onSetOpponentFaction: (String) -> Unit = {},
+    onSaveGame: () -> Unit = {},
+    onDismissSave: () -> Unit = {},
     onAdjustPlayerCpGained: (Int) -> Unit,
     onAdjustPlayerCpSpent: (Int) -> Unit,
     onAdjustPlayerPrimary: (Int) -> Unit,
@@ -94,6 +108,9 @@ private fun GameTrackerContent(
             TopAppBar(
                 title = { Text("Game Tracker", fontWeight = FontWeight.Bold) },
                 actions = {
+                    IconButton(onClick = onSaveGame) {
+                        Icon(Icons.Default.Save, contentDescription = "Save game")
+                    }
                     IconButton(onClick = { showResetDialog = true }) {
                         Icon(Icons.Default.Refresh, contentDescription = "New game")
                     }
@@ -117,6 +134,24 @@ private fun GameTrackerContent(
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                // Faction name fields
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = state.myFactionName,
+                        onValueChange = onSetMyFaction,
+                        label = { Text("Your Faction") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedTextField(
+                        value = state.opponentFactionName,
+                        onValueChange = onSetOpponentFaction,
+                        label = { Text("Opponent") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+
                 ScoreHeader(state)
 
                 val playerRound = state.playerRounds[state.currentRound]
@@ -153,9 +188,40 @@ private fun GameTrackerContent(
                     onSetRound = onSetRound,
                 )
 
+                Button(
+                    onClick = onSaveGame,
+                    enabled = saveState !is SaveGameState.Saving,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (saveState is SaveGameState.Saving) "Saving…" else "End Game & Save")
+                }
+
                 Spacer(Modifier.height(8.dp))
             }
         }
+    }
+
+    if (saveState is SaveGameState.Saved) {
+        AlertDialog(
+            onDismissRequest = onDismissSave,
+            title = { Text("Game Saved") },
+            text = {
+                val winner = if (state.playerTotal > state.opponentTotal) "You win!"
+                else if (state.opponentTotal > state.playerTotal) "Opponent wins."
+                else "Draw!"
+                Text("${state.playerTotal} – ${state.opponentTotal}. $winner")
+            },
+            confirmButton = { TextButton(onClick = onDismissSave) { Text("OK") } },
+        )
+    }
+
+    if (saveState is SaveGameState.Error) {
+        AlertDialog(
+            onDismissRequest = onDismissSave,
+            title = { Text("Save Failed") },
+            text = { Text((saveState as SaveGameState.Error).message) },
+            confirmButton = { TextButton(onClick = onDismissSave) { Text("OK") } },
+        )
     }
 
     if (showResetDialog) {

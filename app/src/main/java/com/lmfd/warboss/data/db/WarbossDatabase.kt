@@ -6,6 +6,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.lmfd.warboss.data.db.dao.ArmyListDao
 import com.lmfd.warboss.data.db.dao.FactionDao
+import com.lmfd.warboss.data.db.dao.GameResultDao
 import com.lmfd.warboss.data.db.dao.GameSystemDao
 import com.lmfd.warboss.data.db.dao.ProfileDao
 import com.lmfd.warboss.data.db.dao.UnitDao
@@ -14,13 +15,14 @@ import com.lmfd.warboss.data.db.entity.ArmyListUnitEntity
 import com.lmfd.warboss.data.db.entity.CategoryLinkEntity
 import com.lmfd.warboss.data.db.entity.CharacteristicEntity
 import com.lmfd.warboss.data.db.entity.FactionEntity
+import com.lmfd.warboss.data.db.entity.GameResultEntity
 import com.lmfd.warboss.data.db.entity.GameSystemEntity
 import com.lmfd.warboss.data.db.entity.KeywordEntity
 import com.lmfd.warboss.data.db.entity.ProfileEntity
 import com.lmfd.warboss.data.db.entity.UnitEntity
 
 @Database(
-    version = 3,
+    version = 4,
     exportSchema = true,
     entities = [
         GameSystemEntity::class,
@@ -32,6 +34,7 @@ import com.lmfd.warboss.data.db.entity.UnitEntity
         CategoryLinkEntity::class,
         ArmyListEntity::class,
         ArmyListUnitEntity::class,
+        GameResultEntity::class,
     ],
 )
 abstract class WarbossDatabase : RoomDatabase() {
@@ -40,8 +43,28 @@ abstract class WarbossDatabase : RoomDatabase() {
     abstract fun unitDao(): UnitDao
     abstract fun profileDao(): ProfileDao
     abstract fun armyListDao(): ArmyListDao
+    abstract fun gameResultDao(): GameResultDao
 
     companion object {
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS game_result (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        armyListId TEXT,
+                        myFactionName TEXT NOT NULL,
+                        opponentFactionName TEXT NOT NULL,
+                        playerScore INTEGER NOT NULL,
+                        opponentScore INTEGER NOT NULL,
+                        didWin INTEGER NOT NULL,
+                        playedAt INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE army_list_unit ADD COLUMN importedName TEXT")

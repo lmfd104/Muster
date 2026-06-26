@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lmfd.warboss.data.billing.BillingManager
 import com.lmfd.warboss.domain.usecase.AnalyzeArmyListUseCase
+import com.lmfd.warboss.domain.usecase.AnalyzeMatchupUseCase
 import com.lmfd.warboss.domain.usecase.GetArmyListDetailUseCase
 import com.lmfd.warboss.domain.usecase.RemoveEntryUseCase
 import com.lmfd.warboss.domain.usecase.UpdateEntryQuantityUseCase
@@ -25,6 +26,7 @@ class ArmyListDetailViewModel @Inject constructor(
     private val removeEntry: RemoveEntryUseCase,
     private val updateEntryQuantity: UpdateEntryQuantityUseCase,
     private val analyzeArmyList: AnalyzeArmyListUseCase,
+    private val analyzeMatchup: AnalyzeMatchupUseCase,
     billingManager: BillingManager,
 ) : ViewModel() {
 
@@ -42,6 +44,9 @@ class ArmyListDetailViewModel @Inject constructor(
 
     private val _analysisState = MutableStateFlow<AiAnalysisUiState>(AiAnalysisUiState.Idle)
     val analysisState: StateFlow<AiAnalysisUiState> = _analysisState.asStateFlow()
+
+    private val _matchupState = MutableStateFlow<MatchupUiState>(MatchupUiState.Idle)
+    val matchupState: StateFlow<MatchupUiState> = _matchupState.asStateFlow()
 
     fun removeEntry(entryId: String) {
         viewModelScope.launch { removeEntry.invoke(entryId) }
@@ -78,5 +83,31 @@ class ArmyListDetailViewModel @Inject constructor(
 
     fun dismissAnalysis() {
         _analysisState.value = AiAnalysisUiState.Idle
+    }
+
+    fun analyzeMatchupVs(opponentFaction: String) {
+        val current = uiState.value
+        if (current !is ArmyListDetailUiState.Success) return
+        if (current.entries.isEmpty()) return
+
+        viewModelScope.launch {
+            _matchupState.value = MatchupUiState.Loading
+            _matchupState.value = try {
+                val analysis = analyzeMatchup(
+                    myFactionName = current.list.factionName,
+                    opponentFactionName = opponentFaction,
+                    totalPoints = current.list.pointsTotal,
+                    pointsLimit = current.list.pointsLimit,
+                    entries = current.entries,
+                )
+                MatchupUiState.Success(analysis)
+            } catch (e: Exception) {
+                MatchupUiState.Error(e.message ?: "Matchup analysis failed")
+            }
+        }
+    }
+
+    fun dismissMatchup() {
+        _matchupState.value = MatchupUiState.Idle
     }
 }

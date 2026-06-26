@@ -38,6 +38,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -61,6 +62,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.lmfd.warboss.domain.model.ArmyList
 import com.lmfd.warboss.domain.model.ArmyListEntry
 import com.lmfd.warboss.domain.model.ListAnalysis
+import com.lmfd.warboss.domain.model.MatchupAnalysis
 import com.lmfd.warboss.ui.theme.WarbossTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -72,17 +74,21 @@ fun ArmyListDetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     val isPro by viewModel.isPro.collectAsState()
     val analysisState by viewModel.analysisState.collectAsState()
+    val matchupState by viewModel.matchupState.collectAsState()
 
     ArmyListDetailContent(
         uiState = uiState,
         isPro = isPro,
         analysisState = analysisState,
+        matchupState = matchupState,
         onBack = onBack,
         onRemoveEntry = viewModel::removeEntry,
         onIncrementQty = viewModel::incrementQuantity,
         onDecrementQty = viewModel::decrementQuantity,
         onRateList = viewModel::analyzeList,
         onDismissAnalysis = viewModel::dismissAnalysis,
+        onAnalyzeMatchup = viewModel::analyzeMatchupVs,
+        onDismissMatchup = viewModel::dismissMatchup,
     )
 }
 
@@ -92,12 +98,15 @@ internal fun ArmyListDetailContent(
     uiState: ArmyListDetailUiState,
     isPro: Boolean,
     analysisState: AiAnalysisUiState,
+    matchupState: MatchupUiState = MatchupUiState.Idle,
     onBack: () -> Unit,
     onRemoveEntry: (String) -> Unit = {},
     onIncrementQty: (entryId: String, currentQty: Int) -> Unit = { _, _ -> },
     onDecrementQty: (entryId: String, currentQty: Int) -> Unit = { _, _ -> },
     onRateList: () -> Unit = {},
     onDismissAnalysis: () -> Unit = {},
+    onAnalyzeMatchup: (String) -> Unit = {},
+    onDismissMatchup: () -> Unit = {},
 ) {
     val title = when (uiState) {
         is ArmyListDetailUiState.Success -> uiState.list.name
@@ -106,6 +115,8 @@ internal fun ArmyListDetailContent(
 
     val hasEntries = uiState is ArmyListDetailUiState.Success && uiState.entries.isNotEmpty()
     var showUpgradeDialog by remember { mutableStateOf(false) }
+    var showMatchupPicker by remember { mutableStateOf(false) }
+    var matchupOpponent by remember { mutableStateOf("") }
     val context = LocalContext.current
 
     if (showUpgradeDialog) {
@@ -114,6 +125,40 @@ internal fun ArmyListDetailContent(
             title = { Text("Muster Pro") },
             text = { Text("AI army analysis is a Pro feature. Upgrade to get competitive ratings, meta insights, and unit swap suggestions for every list.") },
             confirmButton = { TextButton(onClick = { showUpgradeDialog = false }) { Text("OK") } },
+        )
+    }
+
+    if (showMatchupPicker) {
+        AlertDialog(
+            onDismissRequest = { showMatchupPicker = false; matchupOpponent = "" },
+            title = { Text("Analyze Matchup") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Who are you playing against?", style = MaterialTheme.typography.bodyMedium)
+                    OutlinedTextField(
+                        value = matchupOpponent,
+                        onValueChange = { matchupOpponent = it },
+                        label = { Text("Opponent Faction") },
+                        singleLine = true,
+                        placeholder = { Text("e.g. Tyranids") },
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (matchupOpponent.isNotBlank()) {
+                            onAnalyzeMatchup(matchupOpponent.trim())
+                            showMatchupPicker = false
+                            matchupOpponent = ""
+                        }
+                    },
+                    enabled = matchupOpponent.isNotBlank(),
+                ) { Text("Analyze") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMatchupPicker = false; matchupOpponent = "" }) { Text("Cancel") }
+            },
         )
     }
 
@@ -129,6 +174,22 @@ internal fun ArmyListDetailContent(
                 state = analysisState,
                 onRetry = onRateList,
                 onDismiss = onDismissAnalysis,
+            )
+        }
+    }
+
+    val matchupSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val showMatchupSheet = matchupState != MatchupUiState.Idle
+
+    if (showMatchupSheet) {
+        ModalBottomSheet(
+            onDismissRequest = onDismissMatchup,
+            sheetState = matchupSheetState,
+        ) {
+            MatchupSheetContent(
+                state = matchupState,
+                onRetry = { showMatchupPicker = true },
+                onDismiss = onDismissMatchup,
             )
         }
     }
@@ -195,6 +256,7 @@ internal fun ArmyListDetailContent(
                 onIncrementQty = onIncrementQty,
                 onDecrementQty = onDecrementQty,
                 onRateList = { if (isPro) onRateList() else showUpgradeDialog = true },
+                onAnalyzeMatchup = { if (isPro) showMatchupPicker = true else showUpgradeDialog = true },
                 modifier = Modifier.padding(padding),
             )
         }
@@ -210,6 +272,7 @@ private fun ArmyListDetailBody(
     onIncrementQty: (entryId: String, currentQty: Int) -> Unit,
     onDecrementQty: (entryId: String, currentQty: Int) -> Unit,
     onRateList: () -> Unit,
+    onAnalyzeMatchup: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier.fillMaxSize()) {
@@ -218,7 +281,13 @@ private fun ArmyListDetailBody(
         }
 
         item {
-            RateMyListBanner(isPro = isPro, onClick = onRateList, modifier = Modifier.padding(horizontal = 16.dp))
+            Row(
+                Modifier.padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                RateMyListBanner(isPro = isPro, onClick = onRateList, modifier = Modifier.weight(1f))
+                MatchupBanner(isPro = isPro, onClick = onAnalyzeMatchup, modifier = Modifier.weight(1f))
+            }
             Spacer(Modifier.height(8.dp))
         }
 
@@ -482,6 +551,126 @@ private fun EntryRow(
             }
         }
     }
+}
+
+@Composable
+private fun MatchupBanner(isPro: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val teal = Color(0xFF26C6DA)
+    val muted = MaterialTheme.colorScheme.primary
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (isPro) teal else muted.copy(alpha = 0.4f)),
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = if (isPro) teal else MaterialTheme.colorScheme.onSurfaceVariant,
+        ),
+    ) {
+        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(
+            if (isPro) "Matchup" else "Matchup  •  Pro",
+            style = MaterialTheme.typography.labelLarge,
+        )
+    }
+}
+
+@Composable
+private fun MatchupSheetContent(
+    state: MatchupUiState,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 24.dp, end = 24.dp, bottom = 40.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        when (state) {
+            MatchupUiState.Idle -> Unit
+
+            MatchupUiState.Loading -> {
+                Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        CircularProgressIndicator(color = Color(0xFF26C6DA))
+                        Text("Analysing matchup…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+
+            is MatchupUiState.Error -> {
+                Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(40.dp))
+                        Text(state.message, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+                            Button(onClick = onRetry) { Text("Retry") }
+                        }
+                    }
+                }
+            }
+
+            is MatchupUiState.Success -> MatchupResults(state.analysis)
+        }
+    }
+}
+
+@Composable
+private fun MatchupResults(analysis: MatchupAnalysis) {
+    val teal = Color(0xFF26C6DA)
+    val ratingColor = when {
+        analysis.matchupRating >= 7 -> Color(0xFF4CAF50)
+        analysis.matchupRating >= 4 -> Color(0xFFFFD700)
+        else -> MaterialTheme.colorScheme.error
+    }
+
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column {
+            Text(
+                "${analysis.matchupRating}/10",
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.Bold,
+                color = ratingColor,
+            )
+            Text("Matchup Rating", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (analysis.historySummary.isNotBlank()) {
+            Box(
+                modifier = Modifier
+                    .background(teal.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                Text(analysis.historySummary, style = MaterialTheme.typography.labelSmall, color = teal)
+            }
+        }
+    }
+
+    Text(analysis.summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+
+    AnalysisSection(
+        label = "THREATS TO WATCH",
+        items = analysis.threats,
+        icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFF9800), modifier = Modifier.size(16.dp)) },
+    )
+
+    AnalysisSection(
+        label = "COUNTER STRATEGIES",
+        items = analysis.counterStrategies,
+        icon = { Icon(Icons.Default.CheckCircle, contentDescription = null, tint = teal, modifier = Modifier.size(16.dp)) },
+    )
+
+    AnalysisSection(
+        label = "UNIT RECOMMENDATIONS",
+        items = analysis.unitRecommendations,
+        icon = { Icon(Icons.Default.Lightbulb, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(16.dp)) },
+    )
 }
 
 private fun formatShareText(list: ArmyList, entries: List<ArmyListEntry>): String {

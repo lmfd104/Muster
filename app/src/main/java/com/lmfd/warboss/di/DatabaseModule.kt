@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.lmfd.warboss.data.db.WarbossDatabase
 import com.lmfd.warboss.data.db.dao.ArmyListDao
 import com.lmfd.warboss.data.db.dao.FactionDao
+import com.lmfd.warboss.data.db.dao.GameResultDao
 import com.lmfd.warboss.data.db.dao.GameSystemDao
 import com.lmfd.warboss.data.db.dao.ProfileDao
 import com.lmfd.warboss.data.db.dao.UnitDao
@@ -23,7 +24,7 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): WarbossDatabase =
         Room.databaseBuilder(context, WarbossDatabase::class.java, "warboss.db")
-            .addMigrations(WarbossDatabase.MIGRATION_1_2, WarbossDatabase.MIGRATION_2_3)
+            .addMigrations(WarbossDatabase.MIGRATION_1_2, WarbossDatabase.MIGRATION_2_3, WarbossDatabase.MIGRATION_3_4)
             .build()
 
     @Provides
@@ -45,4 +46,8 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideArmyListDao(db: WarbossDatabase): ArmyListDao = db.armyListDao()
+
+    @Provides
+    @Singleton
+    fun provideGameResultDao(db: WarbossDatabase): GameResultDao = db.gameResultDao()
 }
