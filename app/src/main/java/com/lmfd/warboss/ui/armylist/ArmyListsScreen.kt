@@ -21,6 +21,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -217,6 +218,18 @@ private fun ArmyListRow(list: ArmyList, onClick: () -> Unit) {
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.secondary,
                 )
+                if (list.pointsLimit > 0) {
+                    Spacer(Modifier.height(6.dp))
+                    val progress = (list.pointsTotal.toFloat() / list.pointsLimit).coerceIn(0f, 1f)
+                    val overLimit = list.pointsTotal > list.pointsLimit
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = if (overLimit) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                }
             }
             Icon(
                 Icons.AutoMirrored.Filled.ArrowForwardIos,

@@ -286,6 +286,9 @@ class BsDataParser @Inject constructor() {
                 "infoLinks" -> infoLinkTargetIds.addAll(parseInfoLinksElement(parser))
                 "entryLinks" -> entryLinkTargetIds.addAll(parseEntryLinksElement(parser))
                 "categoryLinks" -> categoryLinks.addAll(parseCategoryLinksElement(parser, registry))
+                // Recurse into model/weapon selection entries to collect nested weapon profiles
+                "selectionEntries", "selectionEntryGroups" ->
+                    profiles.addAll(parseNestedSelectionProfiles(parser, registry))
                 "constraints" -> {
                     val (mn, mx) = parseConstraintsElement(parser)
                     minQuantity = mn
@@ -325,6 +328,9 @@ class BsDataParser @Inject constructor() {
             }
         }
 
+        // Deduplicate profiles by id — nested traversal can yield the same weapon multiple times
+        val deduped = profiles.distinctBy { it.id }
+
         return ParsedUnit(
             id = id,
             name = name,
@@ -332,7 +338,7 @@ class BsDataParser @Inject constructor() {
             points = points,
             minQuantity = minQuantity,
             maxQuantity = maxQuantity,
-            profiles = profiles,
+            profiles = deduped,
             keywords = keywords,
             factionKeywords = factionKeywords,
             categoryLinks = categoryLinks,
@@ -490,6 +496,58 @@ class BsDataParser @Inject constructor() {
         return min to max
     }
 
+    /**
+     * Recursively traverse selectionEntries / selectionEntryGroups and collect every
+     * profile reachable via direct <profiles>, <infoLinks type="profile">, nested
+     * <selectionEntries>, or <entryLinks> to shared entries.
+     *
+     * This is how WH40k 10e surfaces weapon stats — weapons live inside model
+     * selectionEntries inside unit selectionEntries, linked to sharedProfiles via
+     * infoLinks. Without this traversal the unit only sees its top-level stat block
+     * and abilities, not its weapons.
+     *
+     * Pre:  parser at START_TAG "selectionEntries" or "selectionEntryGroups".
+     * Post: parser at matching END_TAG.
+     */
+    private fun parseNestedSelectionProfiles(
+        parser: XmlPullParser,
+        registry: GameSystemTypeRegistry,
+    ): List<ParsedProfile> {
+        val result = mutableListOf<ParsedProfile>()
+        while (parser.next() != XmlPullParser.END_TAG) {
+            if (parser.eventType != XmlPullParser.START_TAG) continue
+            when (parser.name) {
+                "selectionEntry", "selectionEntryGroup" -> {
+                    while (parser.next() != XmlPullParser.END_TAG) {
+                        if (parser.eventType != XmlPullParser.START_TAG) continue
+                        when (parser.name) {
+                            "profiles" -> result.addAll(parseProfilesElement(parser))
+                            "infoLinks" -> {
+                                parseInfoLinksElement(parser).forEach { targetId ->
+                                    registry.sharedProfiles[targetId]?.let { rp ->
+                                        result.add(ParsedProfile(rp.id, rp.name, rp.typeName, rp.characteristics))
+                                    }
+                                }
+                            }
+                            "selectionEntries", "selectionEntryGroups" ->
+                                result.addAll(parseNestedSelectionProfiles(parser, registry))
+                            "entryLinks" -> {
+                                parseEntryLinksElement(parser).forEach { targetId ->
+                                    registry.sharedEntryProfiles[targetId]?.forEach { rp ->
+                                        result.add(ParsedProfile(rp.id, rp.name, rp.typeName, rp.characteristics))
+                                    }
+                                }
+                            }
+                            else -> parser.skip()
+                        }
+                    }
+                }
+                else -> parser.skip()
+            }
+        }
+        return result
+    }
+
     // ─── Registry collection helpers ─────────────────────────────────────────
 
     /**
@@ -541,19 +599,30 @@ class BsDataParser @Inject constructor() {
                     }
                 }
             } else {
-                // Non-unit shared entry: collect only profiles for nested entryLink resolution
+                // Non-unit shared entry (model, upgrade, weapon): collect profiles including
+                // those reachable via infoLinks and nested selectionEntries.
+                val entryProfiles = mutableListOf<ParsedProfile>()
                 while (parser.next() != XmlPullParser.END_TAG) {
                     if (parser.eventType != XmlPullParser.START_TAG) continue
-                    if (parser.name == "profiles") {
-                        parseProfilesElement(parser).forEach { p ->
-                            registry.addSharedEntryProfile(
-                                entryId,
-                                GameSystemTypeRegistry.RegistryProfile(p.id, p.name, p.typeName, p.characteristics)
-                            )
+                    when (parser.name) {
+                        "profiles" -> entryProfiles.addAll(parseProfilesElement(parser))
+                        "infoLinks" -> {
+                            parseInfoLinksElement(parser).forEach { targetId ->
+                                registry.sharedProfiles[targetId]?.let { rp ->
+                                    entryProfiles.add(ParsedProfile(rp.id, rp.name, rp.typeName, rp.characteristics))
+                                }
+                            }
                         }
-                    } else {
-                        parser.skip()
+                        "selectionEntries", "selectionEntryGroups" ->
+                            entryProfiles.addAll(parseNestedSelectionProfiles(parser, registry))
+                        else -> parser.skip()
                     }
+                }
+                entryProfiles.distinctBy { it.id }.forEach { p ->
+                    registry.addSharedEntryProfile(
+                        entryId,
+                        GameSystemTypeRegistry.RegistryProfile(p.id, p.name, p.typeName, p.characteristics)
+                    )
                 }
             }
         }

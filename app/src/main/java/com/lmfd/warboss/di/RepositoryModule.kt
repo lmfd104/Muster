@@ -2,8 +2,10 @@ package com.lmfd.warboss.di
 
 import com.lmfd.warboss.data.bsdata.BsDataRepository
 import com.lmfd.warboss.data.bsdata.BsDataRepositoryImpl
+import com.lmfd.warboss.data.repository.AiAnalysisRepositoryImpl
 import com.lmfd.warboss.data.repository.ArmyListRepositoryImpl
 import com.lmfd.warboss.data.repository.UnitRepositoryImpl
+import com.lmfd.warboss.domain.repository.AiAnalysisRepository
 import com.lmfd.warboss.domain.repository.ArmyListRepository
 import com.lmfd.warboss.domain.repository.UnitRepository
 import dagger.Binds
@@ -27,4 +29,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindArmyListRepository(impl: ArmyListRepositoryImpl): ArmyListRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindAiAnalysisRepository(impl: AiAnalysisRepositoryImpl): AiAnalysisRepository
 }

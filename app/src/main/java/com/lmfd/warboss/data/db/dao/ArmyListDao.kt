@@ -51,6 +51,9 @@ interface ArmyListDao {
     @Query("DELETE FROM army_list_unit WHERE id = :entryId")
     suspend fun removeEntry(entryId: String)
 
+    @Query("UPDATE army_list_unit SET quantity = :quantity WHERE id = :entryId")
+    suspend fun updateEntryQuantity(entryId: String, quantity: Int)
+
     @Query("""
         SELECT alu.id, alu.armyListId, alu.unitId, alu.quantity,
                u.name AS unitName, u.points AS unitPoints

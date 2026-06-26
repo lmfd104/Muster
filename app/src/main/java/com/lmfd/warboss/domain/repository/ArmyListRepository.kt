@@ -11,5 +11,6 @@ interface ArmyListRepository {
     suspend fun createArmyList(name: String, factionId: String, factionName: String, pointsLimit: Int): String
     suspend fun addUnitToList(listId: String, unitId: String): String
     suspend fun removeEntry(entryId: String)
+    suspend fun updateEntryQuantity(entryId: String, quantity: Int)
     suspend fun deleteArmyList(listId: String)
 }

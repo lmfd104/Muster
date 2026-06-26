@@ -1,5 +1,6 @@
 package com.lmfd.warboss.ui.unit
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,13 +13,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -36,6 +40,7 @@ import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -56,6 +62,7 @@ import com.lmfd.warboss.domain.model.CategoryLink
 import com.lmfd.warboss.domain.model.UnitDetail
 import com.lmfd.warboss.domain.model.UnitProfile
 import com.lmfd.warboss.domain.model.UnitSummary
+import com.lmfd.warboss.ui.components.TacticalBackground
 import com.lmfd.warboss.ui.theme.WarbossTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -117,14 +124,18 @@ private fun UnitDetailContent(
                         when (uiState) {
                             is UnitDetailUiState.Success -> uiState.detail.summary.name
                             else -> "Unit Detail"
-                        }
+                        },
+                        fontWeight = FontWeight.Bold,
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
             )
         },
         floatingActionButton = {
@@ -136,58 +147,112 @@ private fun UnitDetailContent(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
-        when (uiState) {
-            UnitDetailUiState.Loading -> Box(
-                Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            TacticalBackground()
+            when (uiState) {
+                UnitDetailUiState.Loading -> Box(
+                    Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) { CircularProgressIndicator(color = MaterialTheme.colorScheme.primary) }
 
-            UnitDetailUiState.NotFound -> Box(
-                Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) { Text("Unit not found.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                UnitDetailUiState.NotFound -> Box(
+                    Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) { Text("Unit not found.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
 
-            is UnitDetailUiState.Success -> UnitDetailBody(uiState.detail, padding)
+                is UnitDetailUiState.Success -> UnitDetailBody(uiState.detail)
+            }
         }
     }
 }
 
 @Composable
-private fun UnitDetailBody(detail: UnitDetail, padding: androidx.compose.foundation.layout.PaddingValues) {
+private fun UnitDetailBody(detail: UnitDetail) {
+    val accent = MaterialTheme.colorScheme.primary
+    var selectedKeyword by remember { mutableStateOf<String?>(null) }
+    if (selectedKeyword != null) {
+        KeywordDialog(keyword = selectedKeyword!!, onDismiss = { selectedKeyword = null })
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(padding)
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                DetailRow("Points", "${detail.summary.points}")
-                DetailRow("Type", detail.summary.type)
-                val qty = if (detail.summary.minQuantity == detail.summary.maxQuantity) {
+        // Summary quick-stats row
+        Card(
+            Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                StatPill(label = "POINTS", value = "${detail.summary.points}")
+                VerticalDividerLine()
+                StatPill(label = "TYPE", value = detail.summary.type.uppercase())
+                VerticalDividerLine()
+                val qty = if (detail.summary.minQuantity == detail.summary.maxQuantity)
                     "${detail.summary.minQuantity}"
-                } else {
+                else
                     "${detail.summary.minQuantity}–${detail.summary.maxQuantity}"
-                }
-                DetailRow("Models", qty)
+                StatPill(label = "MODELS", value = qty)
             }
         }
 
-        if (detail.profiles.isNotEmpty()) {
-            SectionHeader("Stat Blocks")
-            detail.profiles.forEach { profile -> ProfileCard(profile) }
+        val unitProfiles   = detail.profiles.filter { it.typeName.equals("Unit", ignoreCase = true) }
+        val rangedWeapons  = detail.profiles.filter { it.typeName.contains("Ranged", ignoreCase = true) }
+        val meleeWeapons   = detail.profiles.filter { it.typeName.contains("Melee", ignoreCase = true) }
+        val abilityProfiles = detail.profiles.filter {
+            it.typeName.contains("Abilit", ignoreCase = true) ||
+            it.typeName.contains("Transport", ignoreCase = true)
+        }
+        val otherProfiles  = detail.profiles.filter { p ->
+            p !in unitProfiles && p !in rangedWeapons && p !in meleeWeapons && p !in abilityProfiles
+        }
+
+        if (unitProfiles.isNotEmpty()) {
+            SectionHeader("Stat Block")
+            unitProfiles.forEach { profile -> ProfileCard(profile) }
+        }
+
+        if (rangedWeapons.isNotEmpty()) {
+            SectionHeader("Ranged Weapons")
+            WeaponTable(
+                weapons = rangedWeapons,
+                columns = listOf("Range", "A", "BS", "S", "AP", "D"),
+                onKeywordClick = { selectedKeyword = it },
+            )
+        }
+
+        if (meleeWeapons.isNotEmpty()) {
+            SectionHeader("Melee Weapons")
+            WeaponTable(
+                weapons = meleeWeapons,
+                columns = listOf("Range", "A", "WS", "S", "AP", "D"),
+                onKeywordClick = { selectedKeyword = it },
+            )
+        }
+
+        if (abilityProfiles.isNotEmpty()) {
+            SectionHeader("Abilities")
+            abilityProfiles.forEach { AbilityCard(it) }
+        }
+
+        if (otherProfiles.isNotEmpty()) {
+            SectionHeader("Other")
+            otherProfiles.forEach { profile -> ProfileCard(profile) }
         }
 
         if (detail.keywords.isNotEmpty()) {
             SectionHeader("Keywords")
-            KeywordChips(detail.keywords)
+            KeywordChips(detail.keywords, onKeywordClick = { selectedKeyword = it })
         }
 
         if (detail.factionKeywords.isNotEmpty()) {
             SectionHeader("Faction Keywords")
-            KeywordChips(detail.factionKeywords)
+            KeywordChips(detail.factionKeywords, onKeywordClick = { selectedKeyword = it })
         }
 
         if (detail.categoryLinks.isNotEmpty()) {
@@ -307,36 +372,110 @@ private fun CreateListDialog(
 }
 
 @Composable
-private fun DetailRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+private fun StatPill(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            letterSpacing = androidx.compose.ui.unit.TextUnit(1f, androidx.compose.ui.unit.TextUnitType.Sp),
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 
 @Composable
+private fun VerticalDividerLine() {
+    Box(
+        Modifier
+            .width(1.dp)
+            .height(40.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+    )
+}
+
+@Composable
 private fun SectionHeader(title: String) {
-    Column {
-        Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-        HorizontalDivider()
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier
+                .width(3.dp)
+                .height(18.dp)
+                .background(MaterialTheme.colorScheme.primary)
+        )
+        Text(
+            title.uppercase(),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 8.dp),
+            letterSpacing = androidx.compose.ui.unit.TextUnit(1.5f, androidx.compose.ui.unit.TextUnitType.Sp),
+        )
     }
 }
 
 @Composable
 private fun ProfileCard(profile: UnitProfile) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("${profile.name} (${profile.typeName})", style = MaterialTheme.typography.titleSmall)
-            profile.characteristics.entries.forEach { (key, value) ->
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(6.dp),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Profile name header with left accent
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .width(3.dp)
+                        .height(18.dp)
+                        .background(MaterialTheme.colorScheme.secondary)
+                )
+                Text(
+                    "${profile.name} · ${profile.typeName}",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+            // Horizontal stat grid: label row then value row
+            if (profile.characteristics.isNotEmpty()) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+                val entries = profile.characteristics.entries.toList()
+                // Labels
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
                 ) {
-                    Text(key, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                    entries.forEach { (key, _) ->
+                        Text(
+                            key,
+                            modifier = Modifier.weight(1f),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            letterSpacing = androidx.compose.ui.unit.TextUnit(0.5f, androidx.compose.ui.unit.TextUnitType.Sp),
+                        )
+                    }
+                }
+                // Values
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                ) {
+                    entries.forEach { (_, value) ->
+                        Text(
+                            value,
+                            modifier = Modifier.weight(1f),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
                 }
             }
         }
@@ -345,10 +484,179 @@ private fun ProfileCard(profile: UnitProfile) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun KeywordChips(keywords: List<String>) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+private fun WeaponTable(
+    weapons: List<UnitProfile>,
+    columns: List<String>,
+    onKeywordClick: (String) -> Unit = {},
+) {
+    // Determine which columns actually have data, plus any extra cols in the data
+    val extraCols = weapons
+        .flatMap { it.characteristics.keys }
+        .distinct()
+        .filter { it !in columns && !it.equals("Keywords", ignoreCase = true) }
+    val shownCols = columns + extraCols
+    val hasKeywords = weapons.any { w ->
+        w.characteristics.keys.any { it.equals("Keywords", ignoreCase = true) }
+    }
+
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(6.dp),
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            // Header row
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            ) {
+                Text(
+                    "NAME",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                shownCols.forEach { col ->
+                    Text(
+                        col.uppercase(),
+                        modifier = Modifier.width(if (col == "Range") 44.dp else 36.dp),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            weapons.forEachIndexed { index, weapon ->
+                if (index > 0) HorizontalDivider(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                    thickness = 0.5.dp,
+                )
+                // Weapon name row
+                val keywords = weapon.characteristics.entries
+                    .firstOrNull { it.key.equals("Keywords", ignoreCase = true) }?.value
+                Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)) {
+                    // Name + optional keywords on same line
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            weapon.name,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                        )
+                    }
+                    // Stat values row
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Spacer(Modifier.weight(1f))
+                        shownCols.forEach { col ->
+                            val value = weapon.characteristics.entries
+                                .firstOrNull { it.key.equals(col, ignoreCase = true) }?.value ?: "-"
+                            Text(
+                                value,
+                                modifier = Modifier.width(if (col == "Range") 44.dp else 36.dp),
+                                textAlign = TextAlign.Center,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onBackground,
+                            )
+                        }
+                    }
+                    if (!keywords.isNullOrBlank()) {
+                        val tokens = keywords.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.padding(top = 4.dp),
+                        ) {
+                            tokens.forEach { token ->
+                                SuggestionChip(
+                                    onClick = { onKeywordClick(token) },
+                                    label = {
+                                        Text(
+                                            token,
+                                            style = MaterialTheme.typography.labelSmall,
+                                        )
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AbilityCard(profile: UnitProfile) {
+    val description = profile.characteristics.entries
+        .firstOrNull { it.key.equals("Description", ignoreCase = true) }?.value
+        ?: profile.characteristics.values.firstOrNull()
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(6.dp),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .width(3.dp)
+                        .height(14.dp)
+                        .background(MaterialTheme.colorScheme.secondary)
+                )
+                Text(
+                    profile.name,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+            if (!description.isNullOrBlank()) {
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun KeywordDialog(keyword: String, onDismiss: () -> Unit) {
+    val description = KeywordGlossary.lookup(keyword)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(keyword, fontWeight = FontWeight.Bold) },
+        text = {
+            Text(
+                description ?: "Faction or unit-specific keyword — no universal rule in WH40k 10th Edition.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } },
+    )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun KeywordChips(keywords: List<String>, onKeywordClick: (String) -> Unit = {}) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         keywords.forEach { keyword ->
-            SuggestionChip(onClick = {}, label = { Text(keyword) })
+            val hasEntry = KeywordGlossary.lookup(keyword) != null
+            SuggestionChip(
+                onClick = { onKeywordClick(keyword) },
+                label = { Text(keyword) },
+                icon = if (hasEntry) ({
+                    Text("?", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                }) else null,
+            )
         }
     }
 }

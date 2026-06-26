@@ -54,6 +54,9 @@ class ArmyListRepositoryImpl @Inject constructor(
 
     override suspend fun removeEntry(entryId: String) = dao.removeEntry(entryId)
 
+    override suspend fun updateEntryQuantity(entryId: String, quantity: Int) =
+        dao.updateEntryQuantity(entryId, quantity)
+
     override suspend fun deleteArmyList(listId: String) = dao.deleteList(listId)
 }
 
